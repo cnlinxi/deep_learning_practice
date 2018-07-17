@@ -8,7 +8,7 @@
 
 import keras.backend as K
 import tensorflow as tf
-from keras import layers
+from keras import layers,initializers
 
 class Length(layers.Layer):
     '''
@@ -63,3 +63,48 @@ def squash(vectors,axis=-1):
     constant=s_squared_norm/(1.0+s_squared_norm) # \frac{||x||^2}{1+||x||^2}
     return vectors/K.sqrt(s_squared_norm+K.epsilon())*constant
 
+class CapsuleLayer(layers.Layer):
+    def __init__(self,output_num_capsules,output_dim_capsules,routings=3,
+                 kernel_initializer='glorot_uniform',**kwargs):
+        super(CapsuleLayer,self).__init__(kwargs)
+        self.output_num_capsules=output_num_capsules
+        self.output_dim_capsules=output_dim_capsules
+        self.routings=routings
+        self.kernel_initializer=initializers.get(kernel_initializer)
+
+    def build(self, input_shape):
+        assert len(input_shape)==3 # input tensor:[None, num_capsules, dim_capsules]
+        self.input_num_capsules=input_shape[1]
+        self.input_dim_capsules=input_shape[2]
+        # 仿射矩阵，在动态路由中通过BP学习到的，乘以上一层的capsule，以实现“多角度”看特征
+        self.W=self.add_weight(shape=[self.output_num_capsules,self.input_num_capsules,
+                                      self.output_dim_capsules,self.input_dim_capsules],
+                               initializer=self.kernel_initializer,name='W')
+        self.built=True
+
+    def __call__(self, inputs,training=None):
+        # inputs: [None,input_num_capsules,input_dim_capsules]
+        # inputs_expand:[None,1,input_num_capsules,input_dim_capsules]
+        inputs_expand=K.expand_dims(inputs,axis=1) # 主要为了后续计算，扩展axis=1位置为接下来output_dim_capsules的位置
+        # 相当于8个卷积并行，同时乘以W，相当于共享了权值W
+        input_tiled=K.tile(inputs_expand,[1,self.output_dim_capsules,1,1])
+        # x:[None,output_num_capsules,input_num_capsules,input_dim_capsules]
+        # W:[None,output_num_capsules,input_num_capsules,output_dim_capsules,input_dim_capsules]
+        # K.batch_dot(x,self.W,[2,3]): [input_dim_capsules] x [output_dim_capsules,input_dim_capsules]
+        # K.map_fn(elems=...): ignore 'batch' dimension, so the axis=2 of x is: input_dim_capsules and W is this too.
+        # [input_dim_capsules] x [output_dim_capsules,input_dim_capsules]=[ouput_dim_capsules]
+        # inputs_hat: [None,output_num_capsules,input_num_capsules,output_dim_capsules]
+        inputs_hat=K.map_fn(lambda x:K.batch_dot(x,self.W,[2,3]),elems=input_tiled) # \hat{u_{ij}}
+
+        b=tf.zeros(shape=[K.shape(inputs_hat)[0],self.output_num_capsules,self.input_num_capsules]) # b_{ij}
+
+        assert self.routings>0 # 动态路由迭代次数应大于0
+        for i in range(self.routings):
+            # c: [None,output_dim_capsules,input_dim_capsules]
+            c=tf.nn.softmax(b,dim=1) # c_i, 对capsule做softmax，是为了归一吗??
+            # [input_dim_capsules] x [input_dim_capsules,output_dim_capsules]=[output_dim_capsules]
+            # outputs:[None,output_num_capsules,output_dim_capsules]
+            outputs=squash(K.batch_dot(c,inputs_hat,[2,2])) # v_j
+            if i<self.routings-1:
+                # [output_dim_capsules] x []
+                b+=K.batch_dot(outputs,inputs_hat,[1,2])
