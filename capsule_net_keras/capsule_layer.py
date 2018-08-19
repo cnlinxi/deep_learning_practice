@@ -100,11 +100,37 @@ class CapsuleLayer(layers.Layer):
 
         assert self.routings>0 # 动态路由迭代次数应大于0
         for i in range(self.routings):
+            # c_i, 在axis=1维度即output_num_capsules维度上做softmax,使得各个output_capsule的"概率"加和为1，capsule内部一样
+            # samples=3, num_capsules=2, dim_capsules=2, softmax之后的结果类似于：
+            # [[[0.11,0.11],[0.89,0.89]],
+            #  [[0.11,0.11],[0.89,0.89]],
+            #  [[0.11,0.11],[0.89,0.89]]]
             # c: [None,output_dim_capsules,input_dim_capsules]
-            c=tf.nn.softmax(b,dim=1) # c_i, 对capsule做softmax，是为了归一吗??
+            c=tf.nn.softmax(b,axis=1)
             # [input_dim_capsules] x [input_dim_capsules,output_dim_capsules]=[output_dim_capsules]
             # outputs:[None,output_num_capsules,output_dim_capsules]
             outputs=squash(K.batch_dot(c,inputs_hat,[2,2])) # v_j
             if i<self.routings-1:
-                # [output_dim_capsules] x []
-                b+=K.batch_dot(outputs,inputs_hat,[1,2])
+                # [output_dim_capsules] x [input_num_capsules,output_dim_capsules]^T=[input_num_capsules]
+                # b: [None,output_num_capsules,input_num_capsules]
+                b+=K.batch_dot(outputs,inputs_hat,[2,3])
+
+        return outputs
+
+    def compute_output_shape(self, input_shape):
+        return tuple(None,self.output_num_capsules,self.output_dim_capsules)
+
+    def get_config(self):
+        config={
+            'output_num_capsules':self.output_num_capsules,
+            'output_dim_capsules':self.output_dim_capsules,
+            'routings':self.routings
+        }
+        base_config=super(CapsuleLayer,self).get_config()
+        return dict(list(base_config)+list(config))
+
+def PrimaryCap(inputs,dim_capsule,n_channels,kernel_size,strides,padding):
+    output=layers.Conv2D(filters=dim_capsule*n_channels,kernel_size=kernel_size,strides=strides,
+                         padding=padding)(inputs)
+    output=layers.Reshape(target_shape=[-1,dim_capsule],name='primary_capsule_reshape')(output)
+    return layers.Lambda(squash,name='primary_capsule_squash')(output)
