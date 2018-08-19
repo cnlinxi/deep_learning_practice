@@ -25,4 +25,4 @@ def build_from_path(in_dir,out_dir,num_workers=1,tqdm=lambda x:x):
             task=partial(_process_utterance)
 
 def _process_utterance(out_dir,index,wav_path,pinyin):
-    pass
+    wav=audio
