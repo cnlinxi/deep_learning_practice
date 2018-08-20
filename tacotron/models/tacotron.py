@@ -105,7 +105,7 @@ class Tacotron():
             hp=self._hparam
             self.mel_loss=tf.reduce_mean(tf.abs(self.mel_targets-self.mel_outputs))
             l1=tf.abs(self.linear_targets-self.linear_outputs)
-            # 频率低于4000Hz的优先损失(prioritize loss for frequencies under 4000 Hz) ####
+            # 频率低于4000Hz的优先损失(prioritize loss for frequencies under 4000 Hz)? ####
             n_priority_freq=int(4000/(hp.sample_rate*0.5)*hp.num_freq)
             self.linear_loss=0.5*tf.reduce_mean(l1)+0.5*tf.reduce_mean(l1[:,:,0:n_priority_freq])
             self.loss=self.mel_loss+self.linear_loss
