@@ -32,6 +32,7 @@ def build_from_path(in_dir,out_dir,num_workers=1,tqdm=lambda x:x):
             index+=1
     return [future.result() for future in tqdm(futures) if future.result is not None]
 
+
 def _process_utterance(out_dir,index,wav_path,pinyin):
     wav=audio.load_wav(wav_path)
 
