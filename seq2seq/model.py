@@ -63,7 +63,7 @@ class Seq2SeqModel:
             # encoder_output: (output_fw,output_bw)
             # output_fw: [batch_size,max_time,output_size], forward rnn output of bidirectional rnn
             # output_bw: [batch_size,max_time,output_size], backward rnn output of bidirectional rnn
-            # encoder_state: (output_state_fw,output_state_bw)
+            # encoder_state: (output_state_fw,output_state_bw), i.e: (LSTMStateTuple,LSTMStateTuple)
             # output_state_fw: [batch_size,output_size], forward final state of bidirectional rnn
             # output_state_bw: [batch_size,output_size], backward final state of bidirectional rnn
             # output_state_fw: (c_fw,h_fw), c_fw/h_fw: [batch_size,hparams.rnn_size]
